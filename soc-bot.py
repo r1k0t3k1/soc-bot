@@ -1,11 +1,17 @@
 from selenium import webdriver
 from urllib.parse import urlparse
-from os import path
+from os import path, getenv
+from PIL import Image
+from PIL import ImageDraw
+from PIL import ImageOps
+from io import BytesIO
+from dotenv import load_dotenv
+from math import ceil
+import base64
+import httpx
 import argparse
 import re
 import sys
-import os
-import math
 import sqlite3
 
 DB = "sqlite3.db" 
@@ -51,25 +57,16 @@ def get_logs_by_unit_id(conn, unit_id):
     cur.execute(sql, data)
     return cur.fetchall()
 
-
-    return urls
 def parse_args():
     parser = argparse.ArgumentParser(description="Go to the URL in the text file, take a screenshot, and post it to the webhook URL.")
 
-    parser.add_argument("-f", "--filename", required=True)
-    parser.add_argument("-t", "--timeout", default=10)
+    parser.add_argument("-a", "--add-url")
+    parser.add_argument("-l", "--list-urls")
 
     args = parser.parse_args()
     return args
 
 def get_screenshot(driver, conn, url, unit_id):
-    from PIL import Image
-    from PIL import ImageDraw
-    from PIL import ImageOps
-    from io import BytesIO
-    import base64
-    import httpx
-
     img_bytes = BytesIO()
 
     try:
@@ -103,15 +100,10 @@ def get_screenshot(driver, conn, url, unit_id):
     conn.commit()
 
 def merge_images(conn, unit_id):
-    from PIL import Image
-    from io import BytesIO
-    import base64
-    import math
-
     files = get_logs_by_unit_id(conn, unit_id) 
     file_count = len(files)
     rows = 3
-    columns = math.ceil(file_count / rows)
+    columns = ceil(file_count / rows)
     width = 800
     height = 700
 
@@ -127,23 +119,17 @@ def merge_images(conn, unit_id):
     return merged_image
 
 def post_image_to_discord(image):
-    import httpx
-    from dotenv import load_dotenv
-    
     load_dotenv()
-    url = os.getenv("WEBHOOK_URL")
-    with open("image.png", "wb") as f:
-        f.write(image.getbuffer())
-    with open("image.png", "rb") as f:
-        res = httpx.post(url, files={"image":f})
-        assert res.status_code == 200
-    os.remove("image.png")
-    
+    url = getenv("WEBHOOK_URL")
+    image.name = "image.png"
+
+    #res = httpx.post(url, files={"file": image})
+    #assert res.status_code == 200
 
 if __name__ == "__main__":
     #args = parse_args()
 
-    if not os.path.exists("./sqlite3.db"):
+    if not path.exists("./sqlite3.db"):
         conn = connect_db()
         db_init(conn)
     else:
@@ -160,6 +146,7 @@ if __name__ == "__main__":
         get_screenshot(driver, conn, parsed_url, unit_id)
 
     driver.quit()
+
     image = merge_images(conn, unit_id)
     post_image_to_discord(image)
     
