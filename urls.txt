@@ -1,0 +1,4 @@
+https://www.google.com
+https://example.com
+http://example.com
+https://www.mbsd.jp
