@@ -43,8 +43,8 @@ def get_screenshot(driver, url):
     borderd.save(filename)
 
 def merge_images():
-    files = [f for f in os.listdir("./screenshots") if f not in "merged.png"]
-    file_count = len(os.listdir("./screenshots"))
+    files = [f for f in os.listdir("./screenshots") if f != "merged.png" and f != ".gitkeep"]
+    file_count = len(files)
     rows = 3
     columns = math.ceil(file_count / rows)
     width = 800
@@ -59,16 +59,19 @@ def merge_images():
     grid_img.save("./screenshots/merged.png")
     image = open("./screenshots/merged.png", "rb")
 
-    for f in [f for f in os.listdir("./screenshots") if f not in "merged.png"]:
+    for f in files:
         os.remove(f"./screenshots/{f}")
 
     return image
 
 def post_image_to_discord(image):
     import httpx
-
-    URL = ""
-    httpx.post(URL, files={"file": image})
+    from dotenv import load_dotenv
+    
+    load_dotenv()
+    url = os.getenv("WEBHOOK_URL")
+    res = httpx.post(url, files={"file": image})
+    assert res.status_code == 200
     
 
 if __name__ == "__main__":

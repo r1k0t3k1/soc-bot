@@ -1,4 +1,6 @@
-https://www.google.com
-https://example.com
-http://example.com
-https://www.mbsd.jp
+https://www.7andi.com/
+https://www.aisin.com/jp/
+https://www.kbc.ac.jp/
+https://www.gsx.co.jp/
+https://www.ctc-g.co.jp/
+https://www.mbsd.jp/

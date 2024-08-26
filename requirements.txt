@@ -2,3 +2,4 @@ selenium
 argparse
 Pillow
 httpx
+python-dotenv
