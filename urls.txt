@@ -4,3 +4,4 @@ https://www.kbc.ac.jp/
 https://www.gsx.co.jp/
 https://www.ctc-g.co.jp/
 https://www.mbsd.jp/
+http://localhost:9999/

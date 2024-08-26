@@ -3,3 +3,4 @@ argparse
 Pillow
 httpx
 python-dotenv
+sqlite3
