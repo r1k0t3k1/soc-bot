@@ -8,18 +8,25 @@ Install dependencies.
 python -m pip install -r requirements.txt
 ```
 
-Create `.env`
-
-```bash
-
-echo {WEBHOOK_URL} > .env
-```
-
-
 ## Usage
 
+Register the url of the webhook.
+
 ```bash
-python soc-bot.py --filename urls.txt`
+python soc-bot.py --add-webhook-url https://xxxxx
+```
+
+Register the URL to be monitored.
+
+```bash
+python soc-bot.py --add-url https://xxxxx
+```
+
+Access the monitored URL and take a screenshots.
+After that, merge the images and upload it to the webhook.
+
+```bash
+python soc-bot.py`
 ```
 
 ## Create systemd timer

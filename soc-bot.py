@@ -26,7 +26,7 @@ class Database:
 
         if not path.exists("./sqlite3.db"):
             self.conn = self.connect_db()
-            self.db_init()
+            self.migrate_db()
         else:
             self.conn = self.connect_db()
 
@@ -39,6 +39,7 @@ class Database:
     def migrate_db(self):
         self.conn.execute("DROP TABLE IF EXISTS soc_bot_log;")
         self.conn.execute("DROP TABLE IF EXISTS url;")
+        self.conn.execute("DROP TABLE IF EXISTS webhook_url;")
 
         self.conn.execute("""CREATE TABLE soc_bot_log(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,18 +52,23 @@ class Database:
         );""")
 
         self.conn.execute("CREATE TABLE url(url TEXT PRIMARY KEY);")
+        self.conn.execute("CREATE TABLE webhook_url(url TEXT PRIMARY KEY);")
 
     def get_urls(self):
         cur = self.conn.cursor()
         cur.execute("SELECT * FROM url;")
         urls = [url[0] for url in cur.fetchall() if re.match(r"^https?://.+", url[0])]
-        print(urls)
         return urls
     
     def get_latest_unit_id(self):
         cur = self.conn.cursor()
         cur.execute("SELECT MAX(unit_id) FROM soc_bot_log;")
-        return cur.fetchone()[0]
+        unit_id = cur.fetchone()[0]
+
+        if not unit_id:
+            return 0
+        
+        return unit_id
     
     def get_logs_by_unit_id(self, unit_id):
         cur = self.conn.cursor()
@@ -75,6 +81,21 @@ class Database:
         unit_id = self.get_latest_unit_id()
         logs = self.get_logs_by_unit_id(unit_id)
         return logs
+    
+    def insert_url(self, url):
+        sql = "INSERT INTO url(url) VALUES (?);"
+        data = (url, )
+        try:
+            self.conn.execute(sql, data)
+            self.conn.commit()
+        except sqlite3.IntegrityError as e:
+            print("The URL is already registerd.")
+
+    def delete_url(self, url):
+        sql = "DELETE FROM url WHERE url = ?;"
+        data = (url, )
+        self.conn.execute(sql, data)
+        self.conn.commit()
 
     def insert_log(self, unit_id, url, status_code, response_length, base64_image):
         sql = "INSERT INTO soc_bot_log(unit_id, url, status_code, response_length, base64_image) VALUES (?,?,?,?,?);"
@@ -82,14 +103,23 @@ class Database:
         self.conn.execute(sql, data)
         self.conn.commit()
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Go to the URL in the text file, take a screenshot, and post it to the webhook URL.")
+    def get_webhook_urls(self):
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM webhook_url;")
+        urls = [url[0] for url in cur.fetchall()]
+        return urls
 
-    parser.add_argument("-a", "--add-url")
-    parser.add_argument("-l", "--list-urls")
+    def insert_webhook_url(self, url):
+        sql = "INSERT INTO webhook_url(url) VALUES (?);"
+        data = (url, )
+        self.conn.execute(sql, data)
+        self.conn.commit()
 
-    args = parser.parse_args()
-    return args
+    def delete_webhook_url(self, url):
+        sql = "DELETE FROM webhook_url WHERE url = ?;"
+        data = (url, )
+        self.conn.execute(sql, data)
+        self.conn.commit()
 
 def get_screenshot(driver, db, url, unit_id):
     img_bytes = BytesIO()
@@ -141,18 +171,65 @@ def merge_images(db, unit_id):
 
     return merged_image
 
-def post_image_to_discord(image):
-    load_dotenv()
-    url = getenv("WEBHOOK_URL")
+def post_image_to_discord(db, image):
     image.name = "image.png"
 
-    res = httpx.post(url, files={"file": image})
-    assert res.status_code == 200
+    urls = db.get_webhook_urls()
+    for url in urls:
+        res = httpx.post(url, files={"file": image})
+        assert res.status_code == 200
 
-if __name__ == "__main__":
-    #args = parse_args()
-    
+def parse_args():
+    parser = argparse.ArgumentParser(description="Go to the URL in the text file, take a screenshot, and post it to the webhook URL.")
+     
+    arg_group = parser.add_mutually_exclusive_group()
+    arg_group.add_argument("-a", "--add-url")
+    arg_group.add_argument("-l", "--list-urls", action="store_true")
+    arg_group.add_argument("-d", "--delete-url")
+    arg_group.add_argument("-wa", "--add-webhook-url")
+    arg_group.add_argument("-wl", "--list-webhook-url", action="store_true")
+    arg_group.add_argument("-wd", "--delete-webhook-url")
+
+    args = parser.parse_args()
+    return args
+
+def main():
+    args = parse_args()
     db = Database()
+
+    if args.add_url:
+        if re.match(r"^https?://.+", args.add_url):
+            db.insert_url(args.add_url)
+            urls = db.get_urls()
+            print(*urls, sep="\n")
+            sys.exit()
+        else:
+            print(f"URL must start with 'http://' or 'https://': {arg.add_url}")
+            sys.exit()
+    elif args.list_urls:
+        urls = db.get_urls()
+        print(*urls, sep="\n")
+        sys.exit()
+    elif args.delete_url:
+        db.delete_url(args.delete_url)
+        urls = db.get_urls()
+        print(*urls, sep="\n")
+        sys.exit()
+    elif args.add_webhook_url:
+        db.insert_webhook_url(args.add_webhook_url)
+        urls = db.get_webhook_urls()
+        print(*urls, sep="\n")
+        sys.exit()
+    elif args.list_webhook_url:
+        urls = db.get_webhook_urls()
+        print(*urls, sep="\n")
+        sys.exit()
+    elif args.delete_webhook_url:
+        db.delete_webhook_url(args.delete_webhook_url)
+        urls = db.get_webhook_urls()
+        print(*urls, sep="\n")
+        sys.exit()
+
 
     urls = db.get_urls()
     unit_id = db.get_latest_unit_id() + 1
@@ -167,4 +244,7 @@ if __name__ == "__main__":
     driver.quit()
 
     image = merge_images(db, unit_id)
-    post_image_to_discord(image)
+    post_image_to_discord(db, image)
+
+if __name__ == "__main__":
+    main()
