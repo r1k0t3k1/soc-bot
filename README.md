@@ -26,7 +26,7 @@ Access the monitored URL and take a screenshots.
 After that, merge the images and upload it to the webhook.
 
 ```bash
-python soc-bot.py`
+python soc-bot.py
 ```
 
 ## Create systemd timer
