@@ -19,43 +19,68 @@ DB = "sqlite3.db"
 CHROME_OPTIONS = webdriver.ChromeOptions()
 CHROME_OPTIONS.add_argument("--headless")
 
-def connect_db():
-    return  sqlite3.connect(DB)
+class Database:
+    DB = "sqlite3.db"
+    def __init__(self):
+        self.conn = None
 
-def db_init(conn):
-    conn.execute("DROP TABLE IF EXISTS soc_bot_log;")
-    conn.execute("DROP TABLE IF EXISTS url;")
+        if not path.exists("./sqlite3.db"):
+            self.conn = self.connect_db()
+            self.db_init()
+        else:
+            self.conn = self.connect_db()
 
-    conn.execute("""CREATE TABLE soc_bot_log(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        unit_id INTEGER,
-        url TEXT,
-        status_code TEXT,
-        response_length INTEGER,
-        base64_image TEXT,
-        created_at TEXT NOT NULL DEFAULT (DATETIME('now', 'localtime'))
-    );""")
+    def __del__(self):
+        self.conn = None
 
-    conn.execute("CREATE TABLE url(url TEXT PRIMARY KEY);")
+    def connect_db(self):
+        return sqlite3.connect(DB)
 
-def get_urls(conn):
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM url;")
-    urls = [url[0] for url in cur.fetchall()]
+    def migrate_db(self):
+        self.conn.execute("DROP TABLE IF EXISTS soc_bot_log;")
+        self.conn.execute("DROP TABLE IF EXISTS url;")
 
-    return urls
+        self.conn.execute("""CREATE TABLE soc_bot_log(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            unit_id INTEGER,
+            url TEXT,
+            status_code TEXT,
+            response_length INTEGER,
+            base64_image TEXT,
+            created_at TEXT NOT NULL DEFAULT (DATETIME('now', 'localtime'))
+        );""")
 
-def get_latest_unit_id(conn):
-    cur = conn.cursor()
-    cur.execute("SELECT MAX(unit_id) FROM soc_bot_log;")
-    return cur.fetchone()[0]
+        self.conn.execute("CREATE TABLE url(url TEXT PRIMARY KEY);")
 
-def get_logs_by_unit_id(conn, unit_id):
-    cur = conn.cursor()
-    sql = "SELECT * FROM soc_bot_log WHERE unit_id = ?;"
-    data = (unit_id, )
-    cur.execute(sql, data)
-    return cur.fetchall()
+    def get_urls(self):
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM url;")
+        urls = [url[0] for url in cur.fetchall() if re.match(r"^https?://.+", url[0])]
+        print(urls)
+        return urls
+    
+    def get_latest_unit_id(self):
+        cur = self.conn.cursor()
+        cur.execute("SELECT MAX(unit_id) FROM soc_bot_log;")
+        return cur.fetchone()[0]
+    
+    def get_logs_by_unit_id(self, unit_id):
+        cur = self.conn.cursor()
+        sql = "SELECT * FROM soc_bot_log WHERE unit_id = ?;"
+        data = (unit_id, )
+        cur.execute(sql, data)
+        return cur.fetchall()
+
+    def get_logs_by_latest_unit_id(self):
+        unit_id = self.get_latest_unit_id()
+        logs = self.get_logs_by_unit_id(unit_id)
+        return logs
+
+    def insert_log(self, unit_id, url, status_code, response_length, base64_image):
+        sql = "INSERT INTO soc_bot_log(unit_id, url, status_code, response_length, base64_image) VALUES (?,?,?,?,?);"
+        data = (unit_id, url, status_code, response_length, base64_image, )
+        self.conn.execute(sql, data)
+        self.conn.commit()
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Go to the URL in the text file, take a screenshot, and post it to the webhook URL.")
@@ -66,7 +91,7 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def get_screenshot(driver, conn, url, unit_id):
+def get_screenshot(driver, db, url, unit_id):
     img_bytes = BytesIO()
 
     try:
@@ -92,15 +117,13 @@ def get_screenshot(driver, conn, url, unit_id):
 
     edited_img_bytes = BytesIO()
     borderd.save(edited_img_bytes, format="PNG")
-
+    
     b64_image = base64.b64encode(edited_img_bytes.getvalue())
-    sql = "INSERT INTO soc_bot_log(unit_id, url, status_code, response_length, base64_image) VALUES (?,?,?,?,?);"
-    data = (unit_id, url.geturl(), status_code, response_length, b64_image, )
-    conn.execute(sql, data)
-    conn.commit()
 
-def merge_images(conn, unit_id):
-    files = get_logs_by_unit_id(conn, unit_id) 
+    db.insert_log(unit_id, url.geturl(), status_code, response_length, b64_image)
+
+def merge_images(db, unit_id):
+    files = db.get_logs_by_unit_id(unit_id) 
     file_count = len(files)
     rows = 3
     columns = ceil(file_count / rows)
@@ -123,31 +146,25 @@ def post_image_to_discord(image):
     url = getenv("WEBHOOK_URL")
     image.name = "image.png"
 
-    #res = httpx.post(url, files={"file": image})
-    #assert res.status_code == 200
+    res = httpx.post(url, files={"file": image})
+    assert res.status_code == 200
 
 if __name__ == "__main__":
     #args = parse_args()
+    
+    db = Database()
 
-    if not path.exists("./sqlite3.db"):
-        conn = connect_db()
-        db_init(conn)
-    else:
-        conn = connect_db()
-
-    urls = get_urls(conn)
-    unit_id = get_latest_unit_id(conn) + 1
-
+    urls = db.get_urls()
+    unit_id = db.get_latest_unit_id() + 1
     driver = webdriver.Chrome(CHROME_OPTIONS)
+
     for url in urls:
         parsed_url = urlparse(url)
         assert re.match("^https?$", parsed_url.scheme)
         
-        get_screenshot(driver, conn, parsed_url, unit_id)
+        get_screenshot(driver, db, parsed_url, unit_id)
 
     driver.quit()
 
-    image = merge_images(conn, unit_id)
+    image = merge_images(db, unit_id)
     post_image_to_discord(image)
-    
-    conn.close()
