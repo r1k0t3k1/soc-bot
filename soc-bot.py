@@ -16,8 +16,10 @@ import sqlite3
 
 DB = "sqlite3.db" 
 
-CHROME_OPTIONS = webdriver.ChromeOptions()
-CHROME_OPTIONS.add_argument("--headless")
+FIREFOX_OPTIONS = webdriver.FirefoxOptions()
+FIREFOX_OPTIONS.add_argument("--headless")
+FIREFOX_OPTIONS.add_argument("--width=800")
+FIREFOX_OPTIONS.add_argument("--height=700")
 
 class Database:
     DB = "sqlite3.db"
@@ -233,7 +235,7 @@ def main():
 
     urls = db.get_urls()
     unit_id = db.get_latest_unit_id() + 1
-    driver = webdriver.Chrome(CHROME_OPTIONS)
+    driver = webdriver.Chrome(FIREFOX_OPTIONS)
 
     for url in urls:
         parsed_url = urlparse(url)
