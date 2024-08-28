@@ -29,6 +29,19 @@ After that, merge the images and upload it to the webhook.
 python soc-bot.py
 ```
 
+## Use SOCKS5 Proxy
+
+If SOCKS5 Proxy cannot go out to the external network, you may need to add the following to proxychains4.conf.
+
+```bash
+# discordapp.com
+localnet 162.159.0.0/16
+```
+
+```bash
+proxychains python soc-bot.py
+```
+
 ## Create systemd timer
 
 Make service file.
