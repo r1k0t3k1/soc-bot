@@ -2,5 +2,5 @@ selenium
 argparse
 Pillow
 httpx
+httpx-socks
 python-dotenv
-sqlite3

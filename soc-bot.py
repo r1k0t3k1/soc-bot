@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from math import ceil
 import base64
 import httpx
+from httpx_socks import SyncProxyTransport
 import argparse
 import re
 import sys
@@ -20,6 +21,16 @@ FIREFOX_OPTIONS = webdriver.FirefoxOptions()
 FIREFOX_OPTIONS.add_argument("--headless")
 FIREFOX_OPTIONS.add_argument("--width=800")
 FIREFOX_OPTIONS.add_argument("--height=700")
+
+FIREFOX_PROFILE = webdriver.FirefoxProfile()
+FIREFOX_PROFILE.set_preference('network.proxy.type', 1)
+FIREFOX_PROFILE.set_preference('network.proxy.socks', "localhost")
+FIREFOX_PROFILE.set_preference('network.proxy.socks_port', 10080)
+FIREFOX_PROFILE.set_preference('network.proxy.socks_remote_dns', True)
+FIREFOX_OPTIONS.profile = FIREFOX_PROFILE
+
+TRANSPORT = SyncProxyTransport.from_url("socks5://localhost:10080")
+CLIENT = httpx.Client(transport=TRANSPORT)
 
 class Database:
     DB = "sqlite3.db"
@@ -129,7 +140,7 @@ def get_screenshot(driver, db, url, unit_id):
     try:
         driver.get(url.geturl())
         img_bytes = BytesIO(driver.get_screenshot_as_png())
-        res = httpx.get(url.geturl())
+        res = CLIENT.get(url.geturl())
         status_code = res.status_code
         response_length = len(res.content)
     except Exception as e:
@@ -139,6 +150,9 @@ def get_screenshot(driver, db, url, unit_id):
         err_image.save(img_bytes, format="PNG")
         status_code = 999
         response_length = 0
+        # debug
+        print(e)
+        sys.exit()
 
     base = Image.new("RGB", (800,700), (0,0,0))
     screenshot = Image.open(img_bytes)
@@ -235,7 +249,7 @@ def main():
 
     urls = db.get_urls()
     unit_id = db.get_latest_unit_id() + 1
-    driver = webdriver.Chrome(FIREFOX_OPTIONS)
+    driver = webdriver.Firefox(options=FIREFOX_OPTIONS)
 
     for url in urls:
         parsed_url = urlparse(url)
@@ -250,3 +264,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
